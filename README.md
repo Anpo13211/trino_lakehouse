@@ -22,8 +22,10 @@
 │   ├── jvm.config             # JVM設定
 │   ├── log.properties         # ログ設定
 │   └── node.properties        # ノード設定
-├── tpch_csv/                   # TPC-H CSVデータ
-└── tpch_parquet/              # TPC-H Parquetデータ
+└── tpch_data/                  # TPC-Hデータセット
+    ├── csv/                    # CSV形式データ
+    ├── parquet/               # Parquet形式データ
+    └── dss.sql                # データベーススキーマ定義
 ```
 
 ## 使用方法
@@ -57,13 +59,15 @@ SHOW SCHEMAS FROM iceberg;
 
 このプロジェクトには、TPC-HベンチマークのSF1（Scale Factor 1）データセットが含まれています：
 
-- **CSV形式**: `tpch_csv/` ディレクトリ
-- **Parquet形式**: `tpch_parquet/` ディレクトリ
+- **CSV形式**: `tpch_data/csv/` ディレクトリ
+- **Parquet形式**: `tpch_data/parquet/` ディレクトリ
+- **スキーマ定義**: `tpch_data/dss.sql` ファイル
 
 ## 注意事項
 
-- Polarisのカタログは永続化されていないため、コンテナ再起動時に再作成が必要です
-- メモリ使用量に注意してください（JVM設定: 1GB）
+- **データファイル**: TPC-HデータファイルはGitHubのサイズ制限により含まれていません。別途取得してください
+- **Polarisカタログ**: 永続化されていないため、コンテナ再起動時に再作成が必要です
+- **メモリ使用量**: JVM設定は2GBに設定されています
 
 ## ライセンス
 
