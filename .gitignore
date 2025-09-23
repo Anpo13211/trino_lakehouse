@@ -1,6 +1,9 @@
 # Docker volumes
 polaris-data/
 
+# TPC-H Data files (too large for GitHub)
+tpch_data/
+
 # Logs
 *.log
 logs/
