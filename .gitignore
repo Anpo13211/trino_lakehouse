@@ -1,18 +1,3 @@
-# Docker volumes
-polaris-data/
-
-# TPC-H Data files (too large for GitHub)
-tpch_data/
-
-# Logs
-*.log
-logs/
-
-# Temporary files
-*.tmp
-*.temp
-
-# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -21,13 +6,22 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# IDE files
+# Large data files
+tpch_data/parquet/*.parquet
+tpch_data/csv/*.csv
+
+# Docker volumes
+volumes/
+
+# Logs
+*.log
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# Temporary files
+*.tmp
+*.temp
