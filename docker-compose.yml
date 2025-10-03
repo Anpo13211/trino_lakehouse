@@ -27,7 +27,7 @@ services:
     depends_on:
       - postgres
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8181/healthcheck"]
+      test: ["CMD", "curl", "-f", "http://localhost:8182/q/health/ready"]
       interval: 5s
       timeout: 10s
       retries: 5
