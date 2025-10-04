@@ -1,3 +1,4 @@
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -11,12 +12,14 @@ tpch_data/
 zero-shot_datasets/
 
 # Docker volumes
+polaris-data/
 volumes/
 
 # Logs
 *.log
+logs/
 
-# IDE
+# IDE files
 .vscode/
 .idea/
 *.swp
@@ -25,3 +28,8 @@ volumes/
 # Temporary files
 *.tmp
 *.temp
+
+# Environment files
+.env
+.env.local
+.env.*.local
