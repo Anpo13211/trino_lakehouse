@@ -7,8 +7,8 @@ ehthumbs.db
 Thumbs.db
 
 # Large data files
-tpch_data/parquet/*.parquet
-tpch_data/csv/*.csv
+tpch_data/
+zero-shot_datasets/
 
 # Docker volumes
 volumes/
