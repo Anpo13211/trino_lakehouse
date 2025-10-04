@@ -17,16 +17,38 @@ services:
       AWS_ENDPOINT_URL_S3: http://minio:9000
       AWS_ENDPOINT_URL_STS: http://minio:9000
       POLARIS_BOOTSTRAP_CREDENTIALS: default-realm,root,secret
-      polaris.features.DROP_WITH_PURGE_ENABLED: true # allow dropping tables from the SQL client
+      polaris.features.DROP_WITH_PURGE_ENABLED: true
       polaris.realm-context.realms: default-realm
-      POLARIS_PERSISTENCE_TYPE: jdbc
-      POLARIS_PERSISTENCE_JDBC_URL: jdbc:h2:file:/data/polaris
-      POLARIS_PERSISTENCE_JDBC_DRIVER: org.h2.Driver
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
+      QUARKUS_DATASOURCE_USERNAME: polaris
+      QUARKUS_DATASOURCE_PASSWORD: polaris
+    depends_on:
+      - postgres
     healthcheck:
       test: ["CMD", "curl", "http://localhost:8181/healthcheck"]
       interval: 5s
       timeout: 10s
       retries: 5
+
+# bootstrap polaris
+# PostgreSQL にメタデータを保存させるためには、スキーマを作る必要がある
+  polaris-admin-bootstrap:
+    image: apache/polaris-admin-tool:latest
+    networks:
+      - local-iceberg-lakehouse
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
+      QUARKUS_DATASOURCE_USERNAME: polaris
+      QUARKUS_DATASOURCE_PASSWORD: polaris
+    depends_on:
+      - postgres
+    command: >
+      bootstrap
+      -r default-realm
+      -c default-realm,root,secret
+
 
   trino:
     image: trinodb/trino:latest
@@ -55,6 +77,8 @@ services:
     ports:
       - "9001:9001"
       - "9000:9000"
+    volumes:
+      - minio-data:/data
     command: ["server", "/data", "--console-address", ":9001"]
 
   minio-client:
@@ -72,14 +96,28 @@ services:
     entrypoint: >
       /bin/sh -c "
       until (mc alias set minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
-      mc rm -r --force minio/warehouse;
-      mc mb minio/warehouse;
+      mc mb minio/warehouse || true;
       mc anonymous set public minio/warehouse;
       tail -f /dev/null
-      " 
-   
+      "
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: polaris
+      POSTGRES_USER: polaris
+      POSTGRES_PASSWORD: polaris
+    ports:
+      - "5432:5432"
+    networks:
+      - local-iceberg-lakehouse
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
 volumes:
   polaris-data:
+  minio-data:
+  postgres-data:
 
 networks:
   local-iceberg-lakehouse:
