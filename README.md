@@ -146,11 +146,44 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
 
 ## データセット
 
-このプロジェクトには、TPC-HベンチマークのSF1（Scale Factor 1）データセットが含まれています：
+このプロジェクトには、Zero-Shotデータセットが含まれています：
 
-- **CSV形式**: `tpch_data/csv/` ディレクトリ
-- **Parquet形式**: `tpch_data/parquet/` ディレクトリ
-- **スキーマ定義**: `tpch_data/dss.sql` ファイル
+
+### Zero-Shotデータセット
+機械学習研究用のデータセットが `zero-shot_datasets/` ディレクトリに含まれています。
+
+このデータセットは、[DataManagementLab/zero-shot-cost-estimation](https://github.com/DataManagementLab/zero-shot-cost-estimation)プロジェクトのVLDB'22論文「Zero-Shot Cost Models for Out-of-the-box Learned Cost Prediction」で使用されたデータセットです。
+
+#### データセット使用ルール
+- **Scaledデータセットがある場合**: CSVデータは `scaled_<dataset>/` から、スキーマ・統計情報は `<dataset>/` から読み込み
+- **Scaledデータセットがない場合**: すべて `<dataset>/` フォルダ内で完結
+
+詳細は `zero-shot_datasets/DATASET_USAGE_ANNOTATION.md` を参照してください。
+
+#### MinIO warehouseディレクトリの管理
+
+```bash
+# connection refused がでたら
+# 必要があれば（MinIO コンテナに正常に接続するためのコマンド）
+docker exec project-minio-client-1 mc alias set local
+
+# Zero-shotデータセット用ディレクトリの作成
+docker exec project-minio-client-1 mc mb local/warehouse/zero-shot
+
+# 各データセット用ディレクトリの作成
+docker exec project-minio-client-1 sh -c '
+for dataset in accidents airline baseball basketball carcinogenesis consumer credit employee fhnk financial geneea genome hepatitis imdb imdb_full movielens seznam ssb tournament tpc_h walmart; do
+  mc mb local/warehouse/zero-shot/$dataset
+done
+'
+
+# ディレクトリ構造の確認
+docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/
+
+# データセットファイルのアップロード例
+docker cp zero-shot_datasets/baseball/players.csv project-minio-client-1:/tmp/
+docker exec project-minio-client-1 mc cp /tmp/players.csv local/warehouse/zero-shot/baseball/
+```
 
 ## 永続化について
 
