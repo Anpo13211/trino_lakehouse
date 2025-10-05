@@ -152,7 +152,7 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
 ### Zero-Shotデータセット
 機械学習研究用のデータセットが `zero-shot_datasets/` ディレクトリに含まれています。
 
-このデータセットは、[DataManagementLab/zero-shot-cost-estimation](https://github.com/DataManagementLab/zero-shot-cost-estimation)プロジェクトのVLDB'22論文「Zero-Shot Cost Models for Out-of-the-box Learned Cost Prediction」で使用されたデータセットです。
+このデータセットは、[DataManagementLab/zero-shot-cost-estimation](https://github.com/DataManagementLab/zero-shot-cost-estimation)(VLDB'22): 「Zero-Shot Cost Models for Out-of-the-box Learned Cost Prediction」で使用されたデータセットです。
 
 #### データセット使用ルール
 - **Scaledデータセットがある場合**: CSVデータは `scaled_<dataset>/` から、スキーマ・統計情報は `<dataset>/` から読み込み
