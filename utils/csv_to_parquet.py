@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
+import csv
 import json
 import os
 import sys
+from io import StringIO
 from pathlib import Path
 
 import pyarrow as pa
@@ -29,6 +28,14 @@ def _looks_like_header(cells):
             score += 0.5
     return score >= max(1, len(cells) * 0.6)
 
+def _split_csv_lines_quote_aware(lines, delim):
+    """
+    引用符を尊重して行を分割（csv.reader利用）
+    """
+    sio = StringIO("\n".join(lines))
+    reader = csv.reader(sio, delimiter=delim, quotechar='"', doublequote=True)
+    return [row for row in reader]
+
 def sniff_csv_format(path, max_bytes=64 * 1024):
     """
     軽量スニッファ：複数の区切り候補で先頭数行を分割して
@@ -44,14 +51,14 @@ def sniff_csv_format(path, max_bytes=64 * 1024):
 
     best = None
     for delim in CANDIDATE_DELIMS:
-        splits = [ln.split(delim) for ln in lines]
+        splits = _split_csv_lines_quote_aware(lines, delim)
         widths = [len(s) for s in splits] or [0]
         if not widths:
             continue
         width_mode = max(set(widths), key=widths.count)
         stability = widths.count(width_mode) / max(1, len(widths))
         width_penalty = 0.0 if 2 <= width_mode <= 2000 else 0.5
-        header_guess = _looks_like_header(splits[0])
+        header_guess = _looks_like_header(splits[0]) if splits else False
         score = stability - width_penalty + (0.1 if header_guess else 0.0)
 
         cand = dict(delimiter=delim, has_header=header_guess, score=score, width=width_mode)
@@ -99,15 +106,21 @@ def expected_num_columns(stats_data: dict, table_name: str):
         return max(1, n)
     return None  # 不明
 
+def _column_names_from_stats(stats_data: dict, table_name: str):
+    if table_name in stats_data and isinstance(stats_data[table_name], dict):
+        return list(stats_data[table_name].keys())
+    return None
+
 
 # ---------------- converter ----------------
 
 def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, stats_data: dict) -> str:
-    print(f"Converting {csv_file} -> Parquet ...")
     table_name = Path(csv_file).stem
+    print(f"Converting {csv_file} (table={table_name}) -> Parquet ...")
 
     column_types = build_column_types(stats_data, table_name)
     exp_cols = expected_num_columns(stats_data, table_name)
+    column_names = _column_names_from_stats(stats_data, table_name)
 
     # 1) 区切り＆ヘッダ自動判定（環境変数で上書き可能）
     delim, has_header = sniff_csv_format(csv_file)
@@ -117,11 +130,14 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         has_header = False
     elif has_header_env.lower() in {"1", "true", "yes"}:
         has_header = True
+    print(f"[sniff] delimiter={repr(delim)} has_header={has_header} table={table_name}")
 
     read_opts = pacsv.ReadOptions(
         use_threads=True,
         block_size=1 << 22,
         autogenerate_column_names=not has_header,
+        # ヘッダ無しで統計に列名があるなら採用
+        column_names=(None if has_header else column_names),
         skip_rows=0,
         skip_rows_after_names=0
     )
@@ -133,25 +149,30 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         newlines_in_values=True
     )
     convert_opts = pacsv.ConvertOptions(
-        column_types=column_types if has_header else None,
+        # 列名が分かっている・かつ対応する型が分かるなら積極的に指定
+        column_types=(column_types if (has_header or column_names) else None),
         strings_can_be_null=True,
-        null_values=["", "NULL", "null", "NaN", "nan"]
+        null_values=["", "NULL", "null", "NaN", "nan"],
+        # 必要に応じて追加
+        timestamp_parsers=["ISO8601", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"]
     )
 
     def try_read(d, header_flag):
         ro = pacsv.ReadOptions(
             use_threads=True,
             block_size=1 << 22,
-            autogenerate_column_names=not header_flag
+            autogenerate_column_names=not header_flag,
+            column_names=(None if header_flag else column_names)
         )
         po = pacsv.ParseOptions(
             delimiter=d, quote_char='"', double_quote=True,
             escape_char=False, newlines_in_values=True
         )
         co = pacsv.ConvertOptions(
-            column_types=column_types if header_flag else None,
+            column_types=(column_types if (header_flag or column_names) else None),
             strings_can_be_null=True,
-            null_values=["", "NULL", "null", "NaN", "nan"]
+            null_values=["", "NULL", "null", "NaN", "nan"],
+            timestamp_parsers=["ISO8601", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"]
         )
         return pacsv.read_csv(csv_file, read_options=ro, parse_options=po, convert_options=co)
 
@@ -163,31 +184,31 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
             if exp_cols is not None and exp_cols > 1:
                 raise ValueError("Suspicious single-column parse; fallback trying other delimiters.")
             # exp_cols が 1 or 不明 → 正当な1列として受け入れる
-    except Exception:
+    except Exception as e:
+        print(f"[warn] primary parse failed or suspicious: {e}")
         success = None
         for d in CANDIDATE_DELIMS:
             for header_flag in (True, False):
                 try:
                     t = try_read(d, header_flag)
-                    # 成功判定：期待列数が分かるなら一致、分からなければ >=1
-                    if (exp_cols is not None and t.num_columns == exp_cols) or \
-                       (exp_cols is None and t.num_columns >= 1):
+                    ok_by_expect = (exp_cols is not None and t.num_columns == exp_cols)
+                    ok_by_min = (exp_cols is None and t.num_columns >= 1)
+                    if ok_by_expect or ok_by_min:
                         success = t
-                        print(f"Fallback succeeded with delimiter={repr(d)}, has_header={header_flag}, cols={t.num_columns}")
+                        print(f"[fallback] delimiter={repr(d)} has_header={header_flag} -> cols={t.num_columns}")
                         break
-                except Exception:
-                    pass
+                except Exception as ie:
+                    # 次の組合せへ
+                    continue
             if success:
                 break
         if not success:
             raise
         table = success
 
-    # 2.5) ヘッダなし・1列・統計にカラム名があるならリネーム
-    if table.num_columns == 1 and not has_header and table_name in stats_data:
-        # 統計JSONの最初のキーを列名に採用（順序が重要ならOrderedDictでJSONを読む）
-        first_col = next(iter(stats_data[table_name].keys()))
-        table = table.rename_columns([first_col])
+    # 2.5) ヘッダなし・1列・統計にカラム名があるならリネーム（安全策）
+    if table.num_columns == 1 and not has_header and column_names and len(column_names) >= 1:
+        table = table.rename_columns([column_names[0]])
 
     # 3) 出力
     os.makedirs(output_dir, exist_ok=True)
