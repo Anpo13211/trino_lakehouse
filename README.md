@@ -1,5 +1,3 @@
-# Trino Research with Iceberg and MinIO
-
 このリポジトリは、Trino、Apache Iceberg、MinIOを使用したデータレイクハウス環境の研究用プロジェクトです。
 
 ## 構成
@@ -96,21 +94,6 @@ curl -i -X POST \
   }'
 ```
 
-### 5. データのアップロード（オプション）
-
-```bash
-# parquetファイルをMinIOにアップロード
-docker cp tpch_data/parquet/customer.parquet project-minio-client-1:/tmp/
-docker exec project-minio-client-1 mc cp /tmp/customer.parquet minio/warehouse/
-
-docker cp tpch_data/parquet/orders.parquet project-minio-client-1:/tmp/
-docker exec project-minio-client-1 mc cp /tmp/orders.parquet minio/warehouse/
-
-docker cp tpch_data/parquet/lineitem.parquet project-minio-client-1:/tmp/
-docker exec project-minio-client-1 mc cp /tmp/lineitem.parquet minio/warehouse/
-...
-```
-
 ## サービスへのアクセス
 
 - **Trino Web UI**: http://localhost:8080
@@ -118,22 +101,7 @@ docker exec project-minio-client-1 mc cp /tmp/lineitem.parquet minio/warehouse/
 - **MinIO API**: http://localhost:9000
 - **Polaris API**: http://localhost:8181
 
-## 使用方法
-
-### Trinoへの接続
-
-```bash
-docker exec project-trino-1 trino
-```
-
-### カタログの確認
-
-```sql
-SHOW CATALOGS;
-SHOW SCHEMAS FROM iceberg;
-```
-
-### データの確認
+## データの確認
 
 ```bash
 # MinIOにアップロードされたファイルの確認
@@ -144,15 +112,15 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
   http://localhost:8181/api/management/v1/catalogs
 ```
 
+
 ## データセット
 
 このプロジェクトには、Zero-Shotデータセットが含まれています：
 
-
 ### Zero-Shotデータセット
-機械学習研究用のデータセットが `zero-shot_datasets/` ディレクトリに含まれています。
+研究用のデータセットが `zero-shot_datasets/` ディレクトリに含まれています。
 
-このデータセットは、[DataManagementLab/zero-shot-cost-estimation](https://github.com/DataManagementLab/zero-shot-cost-estimation)(VLDB'22): 「Zero-Shot Cost Models for Out-of-the-box Learned Cost Prediction」で使用されたデータセットです。
+[DataManagementLab/zero-shot-cost-estimation](https://github.com/DataManagementLab/zero-shot-cost-estimation)(VLDB'22): 「Zero-Shot Cost Models for Out-of-the-box Learned Cost Prediction」で使用されたデータセットです。
 
 #### データセット使用ルール
 - **Scaledデータセットがある場合**: CSVデータは `scaled_<dataset>/` から、スキーマ・統計情報は `<dataset>/` から読み込み
@@ -179,46 +147,49 @@ done
 
 # ディレクトリ構造の確認
 docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/
-
-# データセットファイルのアップロード例
-docker cp zero-shot_datasets/baseball/players.csv project-minio-client-1:/tmp/
-docker exec project-minio-client-1 mc cp /tmp/players.csv local/warehouse/zero-shot/baseball/
 ```
 
-## 永続化について
+## CSV to Parquet変換とアップロード
 
-このセットアップでは以下のデータが永続化されます：
-
-- **MinIOデータ**: `minio-data` ボリュームに保存
-- **Polarisカタログ**: PostgreSQLデータベースに保存
-- **PostgreSQLデータ**: `postgres-data` ボリュームに保存
-
-Docker Composeを再起動しても、データとカタログは保持されます。
-
-## トラブルシューティング
-
-### サービスが起動しない場合
+### 1. 仮想環境のセットアップ
 
 ```bash
-# ログを確認
-docker-compose logs [service-name]
+# 仮想環境の作成とアクティベート
+python3 -m venv venv
+source venv/bin/activate
 
-# サービスを再起動
-docker-compose restart [service-name]
-
-# 完全にクリーンアップして再起動
-docker-compose down -v
-docker-compose up -d
+# 依存関係のインストール
+pip install -r requirements.txt
 ```
 
-### メモリ不足の場合
+### 2. CSV to Parquet変換
 
-`docker-compose.yml`の`TRINO_JVM_OPTS`を調整してください：
+```bash
+# 特定のデータセットをParquet形式に変換
+python csv_to_parquet.py <dataset_name>
 
-```yaml
-environment:
-  - TRINO_JVM_OPTS=-Xmx2G  # 2GBに減らす
+# 例: Walmartデータセットを変換
+python csv_to_parquet.py walmart
 ```
+
+**変換されるファイル:**
+- CSVファイルが `zero-shot_datasets/<dataset>/parquet_data/` にParquet形式で保存される
+- カラム統計情報 (`column_statistics.json`) に基づいて適切なデータ型が設定される
+
+### 3. MinIOへのアップロード
+
+```bash
+# ParquetファイルをMinIOにアップロード
+python upload_to_minio.py
+```
+
+### 4. アップロード確認
+
+```bash
+# MinIOの内容確認
+docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
+```
+
 
 ## 注意事項
 
@@ -227,5 +198,3 @@ environment:
 - **ポート競合**: 8080, 8181, 9000, 9001, 5432ポートが使用されます
 
 ## ライセンス
-
-このプロジェクトは研究目的で作成されています。
