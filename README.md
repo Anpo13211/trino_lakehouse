@@ -12,6 +12,9 @@
 
 ```
 ├── docker-compose.yml          # Docker Compose設定
+├── utils/                      # ユーティリティスクリプト
+│   ├── csv_to_parquet.py      # CSVからParquetへの変換スクリプト
+│   └── upload_to_minio.py     # MinIOへのアップロードスクリプト
 ├── trino/                      # Trino設定ファイル
 │   ├── catalog/
 │   │   ├── iceberg.properties  # Icebergカタログ設定
@@ -20,10 +23,15 @@
 │   ├── jvm.config             # JVM設定
 │   ├── log.properties         # ログ設定
 │   └── node.properties        # ノード設定
-└── tpch_data/                  # TPC-Hデータセット
-    ├── csv/                    # CSV形式データ
-    ├── parquet/               # Parquet形式データ
-    └── dss.sql                # データベーススキーマ定義
+├── tpch_data/                  # TPC-Hデータセット
+│   ├── csv/                    # CSV形式データ
+│   ├── parquet/               # Parquet形式データ
+│   └── dss.sql                # データベーススキーマ定義
+└── zero-shot_datasets/         # Zero-Shotデータセット
+    ├── accidents/              # 事故データセット
+    ├── airline/                # 航空データセット
+    ├── baseball/               # 野球データセット
+    └── ...                     # その他のデータセット
 ```
 
 ## セットアップ手順
@@ -166,10 +174,10 @@ pip install -r requirements.txt
 
 ```bash
 # 特定のデータセットをParquet形式に変換
-python csv_to_parquet.py <dataset_name>
+python utils/csv_to_parquet.py <dataset_name>
 
 # 例: Walmartデータセットを変換
-python csv_to_parquet.py walmart
+python utils/csv_to_parquet.py walmart
 ```
 
 **変換されるファイル:**
@@ -180,7 +188,7 @@ python csv_to_parquet.py walmart
 
 ```bash
 # ParquetファイルをMinIOにアップロード
-python upload_to_minio.py
+python utils/upload_to_minio.py
 ```
 
 ### 4. アップロード確認
