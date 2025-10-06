@@ -201,7 +201,7 @@ docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
 
 ## 注意事項
 
-- **データファイル**: TPC-HデータファイルはGitHubのサイズ制限により含まれていません。別途取得してください
+- **データファイル**: TPC-HデータファイルはGitHubのサイズ制限により含まれていません。
 - **メモリ使用量**: デフォルトで4GBのRAMが使用されます
 - **ポート競合**: 8080, 8181, 9000, 9001, 5432ポートが使用されます
 
