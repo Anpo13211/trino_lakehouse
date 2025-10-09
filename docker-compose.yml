@@ -116,9 +116,16 @@ services:
 
 volumes:
   polaris-data:
+    name: project_polaris-data
+    external: true
   minio-data:
+    name: project_minio-data
+    external: true
   postgres-data:
+    name: project_postgres-data
+    external: true
 
 networks:
   local-iceberg-lakehouse:
     name: local-iceberg-lakehouse
+    external: true
