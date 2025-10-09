@@ -189,15 +189,117 @@ python utils/csv_to_parquet.py walmart
 ```bash
 # ParquetファイルをMinIOにアップロード
 python utils/upload_to_minio.py
-```
 
-### 4. アップロード確認
-
-```bash
 # MinIOの内容確認
 docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
 ```
 
+## Trinoでのテーブル操作
+
+### Trinoへの接続
+
+```bash
+# Trinoコンテナに接続
+docker exec -it project-trino-1 trino
+
+# または、特定のカタログに直接接続
+docker exec -it project-trino-1 trino --catalog iceberg
+```
+
+### テーブルの作成とデータ連携
+
+#### 1. スキーマ（ネームスペース）の作成
+
+```sql
+-- Icebergカタログでスキーマを作成
+CREATE SCHEMA IF NOT EXISTS iceberg.imdb;
+
+-- 作成されたスキーマの確認
+SHOW SCHEMAS IN iceberg;
+```
+
+#### 2. テーブルの作成（空のテーブル）
+
+```sql
+-- 使用するスキーマを指定
+USE iceberg.imdb;
+
+-- 空のテーブルを作成（例: nameテーブル）
+CREATE TABLE IF NOT EXISTS name (
+    id INTEGER,
+    name VARCHAR,
+    imdb_index VARCHAR,
+    imdb_id DOUBLE,
+    gender VARCHAR,
+    name_pcode_cf VARCHAR,
+    name_pcode_nf VARCHAR,
+    surname_pcode VARCHAR,
+    md5sum VARCHAR
+);
+-- MinIOに既にParquetファイルがアップロードされている場合、ALTER TABLEを使用してデータを連携させます：
+
+sql
+-- 既存のParquetファイルをテーブルに追加
+ALTER TABLE iceberg.imdb.name
+EXECUTE add_files(
+  location => 's3a://warehouse/zero-shot/imdb/name/',
+  format   => 'PARQUET'
+);
+
+-- ※: 注意
+-- PARTITIONED が設定されたファイルではこの方法でやることができません（他の解決策を模索中）。
+```
+
+#### 1. テーブル一覧の確認
+
+```sql
+-- カタログ内の全スキーマを表示
+SHOW SCHEMAS IN iceberg;
+
+-- スキーマ内の全テーブルを表示
+USE iceberg.imdb;
+SHOW TABLES;
+```
+
+#### 2. テーブル構造、統計情報の確認
+
+```sql
+-- テーブルのカラム情報を表示
+DESCRIBE name;
+
+-- より詳細な情報を表示
+SHOW COLUMNS FROM name;
+
+-- テーブルの作成DDLを表示
+SHOW CREATE TABLE name;
+
+-- テーブルの統計情報を表示
+SHOW STATS FOR name;
+```
+
+### テーブルの削除とトラブルシューティング
+
+#### テーブルの削除
+
+```sql
+-- テーブルを削除（データも削除）
+DROP TABLE IF EXISTS name;
+```
+
+#### トラブルシューティング
+
+テーブルが破損している場合やメタデータに問題がある場合：
+
+```bash
+# 1. MinIOから直接データを削除
+docker exec project-minio-client-1 mc rm --recursive --force minio/warehouse/zero-shot/imdb/name/
+
+# 2. Trinoを再起動してメタデータキャッシュをクリア
+docker-compose restart trino
+
+# 3. テーブルを再作成
+docker exec -it project-trino-1 trino
+```
 
 ## 注意事項
 
