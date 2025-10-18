@@ -48,13 +48,25 @@ git clone https://github.com/Anpo13211/trino_lakehouse.git
 cd trino_lakehouse
 ```
 
-### 2. 環境の起動
+### 2. ネットワークとボリュームの作成
+
+```bash
+# Dockerネットワークの作成
+docker network create local-iceberg-lakehouse
+
+# Dockerボリュームの作成（trino-dataは自動作成されます）
+docker volume create project_polaris-data
+docker volume create project_minio-data
+docker volume create project_postgres-data
+```
+
+### 3. 環境の起動
 
 ```bash
 docker-compose up -d
 ```
 
-### 3. サービスの起動確認
+### 4. サービスの起動確認
 
 ```bash
 # 全サービスの状態確認
@@ -64,7 +76,7 @@ docker-compose ps
 docker-compose logs -f
 ```
 
-### 4. アクセストークンの取得とカタログ作成
+### 5. アクセストークンの取得とカタログ作成
 
 ```bash
 # OAuth APIからアクセストークンを取得
