@@ -72,11 +72,22 @@ def sniff_csv_format(path, max_bytes=64 * 1024):
 
 # ---------------- stats / schema helpers ----------------
 
-def load_column_statistics(dataset_path: str) -> dict:
+def load_column_statistics(dataset_path: str, dataset_name: str) -> dict:
     stats_file = os.path.join(dataset_path, "column_statistics.json")
     if os.path.exists(stats_file):
         with open(stats_file, "r") as f:
             return json.load(f)
+    
+    # scaled_* の場合、元のデータセットから統計情報を探す
+    if dataset_name.startswith("scaled_"):
+        original_dataset = dataset_name.replace("scaled_", "", 1)
+        original_path = f"zero-shot_datasets/{original_dataset}"
+        original_stats = os.path.join(original_path, "column_statistics.json")
+        if os.path.exists(original_stats):
+            print(f"[info] Using column_statistics.json from {original_dataset}")
+            with open(original_stats, "r") as f:
+                return json.load(f)
+    
     return {}
 
 def _arrow_type_from_name(name: str) -> pa.DataType:
@@ -231,7 +242,7 @@ def process_dataset(dataset_name: str):
         return
 
     print(f"\n=== Processing dataset: {dataset_name} ===")
-    stats_data = load_column_statistics(dataset_path)
+    stats_data = load_column_statistics(dataset_path, dataset_name)
     print(f"Loaded statistics for {len(stats_data)} tables")
 
     output_dir = f"zero-shot_datasets/{dataset_name}/parquet_data"

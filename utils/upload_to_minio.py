@@ -19,7 +19,10 @@ def upload_parquet_to_minio(dataset_name: str, minio_client: Minio, bucket_name:
         print(f"Error: Parquet directory {parquet_dir} not found")
         return
     
-    print(f"\n=== Uploading {dataset_name} dataset to MinIO ===")
+    # scaled_* の場合、MinIOのパスからはscaled_プレフィックスを除く
+    minio_dataset_name = dataset_name.replace("scaled_", "", 1) if dataset_name.startswith("scaled_") else dataset_name
+    
+    print(f"\n=== Uploading {dataset_name} dataset to MinIO (as {minio_dataset_name}) ===")
     
     # Ensure bucket exists
     try:
@@ -45,7 +48,7 @@ def upload_parquet_to_minio(dataset_name: str, minio_client: Minio, bucket_name:
     for parquet_file in parquet_files:
         local_path = os.path.join(parquet_dir, parquet_file)
         table_name = Path(parquet_file).stem
-        object_name = f"zero-shot/{dataset_name}/{table_name}/{parquet_file}"
+        object_name = f"zero-shot/{minio_dataset_name}/{table_name}/{parquet_file}"
         
         try:
             minio_client.fput_object(
