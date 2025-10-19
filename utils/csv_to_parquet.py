@@ -8,6 +8,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
+import pandas as pd
 
 
 # ---------------- Sniff helpers ----------------
@@ -127,7 +128,7 @@ def _column_names_from_stats(stats_data: dict, table_name: str):
 
 def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, stats_data: dict) -> str:
     table_name = Path(csv_file).stem
-    print(f"Converting {csv_file} (table={table_name}) -> Parquet ...")
+    # print(f"Converting {csv_file} (table={table_name}) -> Parquet ...")
 
     column_types = build_column_types(stats_data, table_name)
     exp_cols = expected_num_columns(stats_data, table_name)
@@ -141,7 +142,7 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         has_header = False
     elif has_header_env.lower() in {"1", "true", "yes"}:
         has_header = True
-    print(f"[sniff] delimiter={repr(delim)} has_header={has_header} table={table_name}")
+    # print(f"[sniff] delimiter={repr(delim)} has_header={has_header} table={table_name}")
 
     read_opts = pacsv.ReadOptions(
         use_threads=True,
@@ -156,8 +157,9 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         delimiter=delim,
         quote_char='"',
         double_quote=True,
-        escape_char=False,
-        newlines_in_values=True
+        escape_char='\\',
+        newlines_in_values=True,
+        ignore_empty_lines=True
     )
     convert_opts = pacsv.ConvertOptions(
         # 列名が分かっている・かつ対応する型が分かるなら積極的に指定
@@ -177,7 +179,8 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         )
         po = pacsv.ParseOptions(
             delimiter=d, quote_char='"', double_quote=True,
-            escape_char=False, newlines_in_values=True
+            escape_char='\\', newlines_in_values=True,
+            ignore_empty_lines=True
         )
         co = pacsv.ConvertOptions(
             column_types=(column_types if (header_flag or column_names) else None),
@@ -196,8 +199,10 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
                 raise ValueError("Suspicious single-column parse; fallback trying other delimiters.")
             # exp_cols が 1 or 不明 → 正当な1列として受け入れる
     except Exception as e:
-        print(f"[warn] primary parse failed or suspicious: {e}")
+        print(f"[warn] PyArrow parse failed: {str(e)[:100]}... Trying fallback methods.")
         success = None
+        
+        # フォールバック1: 他の区切り文字と設定を試す
         for d in CANDIDATE_DELIMS:
             for header_flag in (True, False):
                 try:
@@ -206,15 +211,34 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
                     ok_by_min = (exp_cols is None and t.num_columns >= 1)
                     if ok_by_expect or ok_by_min:
                         success = t
-                        print(f"[fallback] delimiter={repr(d)} has_header={header_flag} -> cols={t.num_columns}")
+                        print(f"[fallback-pyarrow] delimiter={repr(d)} has_header={header_flag} -> cols={t.num_columns}")
                         break
                 except Exception as ie:
                     # 次の組合せへ
                     continue
             if success:
                 break
+        
+        # フォールバック2: Pandasでパースを試みる（不正な行をスキップ）
         if not success:
-            raise
+            try:
+                print(f"[fallback-pandas] Trying Pandas with error handling...")
+                df = pd.read_csv(
+                    csv_file,
+                    delimiter=delim,
+                    quoting=csv.QUOTE_MINIMAL,
+                    escapechar='\\',
+                    on_bad_lines='skip',
+                    engine='python',
+                    dtype=str
+                )
+                success = pa.Table.from_pandas(df)
+                print(f"[fallback-pandas] Success -> cols={success.num_columns}, rows={success.num_rows}")
+            except Exception as pe:
+                print(f"[fallback-pandas] Failed: {pe}")
+        
+        if not success:
+            raise Exception(f"All parsing attempts failed for {csv_file}")
         table = success
 
     # 2.5) ヘッダなし・1列・統計にカラム名があるならリネーム（安全策）
@@ -231,7 +255,7 @@ def convert_csv_to_parquet(dataset_name: str, csv_file: str, output_dir: str, st
         use_dictionary=True,
         data_page_size=1 << 20
     )
-    print(f"✓ Created {output_file}")
+    # print(f"✓ Created {output_file}")
     return output_file
 
 
@@ -241,7 +265,7 @@ def process_dataset(dataset_name: str):
         print(f"Error: Dataset directory {dataset_path} not found")
         return
 
-    print(f"\n=== Processing dataset: {dataset_name} ===")
+    print(f"=== Processing dataset: {dataset_name} ===")
     stats_data = load_column_statistics(dataset_path, dataset_name)
     print(f"Loaded statistics for {len(stats_data)} tables")
 
@@ -265,7 +289,7 @@ def process_dataset(dataset_name: str):
         except Exception as e:
             print(f"Error converting {csv_file}: {e}")
 
-    print(f"\n✓ Successfully converted {ok} files to Parquet")
+    print(f"✓ Successfully converted {ok} files to Parquet")
 
 
 def main():

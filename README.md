@@ -13,8 +13,12 @@
 ```
 ├── docker-compose.yml          # Docker Compose設定
 ├── utils/                      # ユーティリティスクリプト
-│   ├── csv_to_parquet.py      # CSVからParquetへの変換スクリプト
-│   └── upload_to_minio.py     # MinIOへのアップロードスクリプト
+│   ├── csv_to_parquet.py                      # CSVからParquetへの変換
+│   ├── upload_to_minio.py                     # MinIOへのアップロード
+│   ├── generate_iceberg_ddl_from_parquet.py   # ParquetからIceberg DDL生成
+│   ├── create_tables_and_link_parquet.py      # Trinoテーブル作成とParquetリンク
+│   ├── create_schemas.py                      # Trinoスキーマ一括作成
+│   └── convert_sql_to_iceberg.py              # PostgreSQL DDLをIceberg形式に変換
 ├── trino/                      # Trino設定ファイル
 │   ├── catalog/
 │   │   ├── iceberg.properties  # Icebergカタログ設定
@@ -120,7 +124,7 @@ curl -i -X POST \
 
 ```bash
 # MinIOにアップロードされたファイルの確認
-docker exec project-minio-client-1 mc ls minio/warehouse
+docker exec trino_lakehouse-minio-client-1 mc ls minio/warehouse
 
 # カタログの確認
 curl -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -190,11 +194,90 @@ python utils/csv_to_parquet.py walmart
 ### 3. MinIOへのアップロード
 
 ```bash
-# ParquetファイルをMinIOにアップロード
+# 特定のデータセットをアップロード
+python utils/upload_to_minio.py walmart
+
+# 全データセットを一括アップロード
 python utils/upload_to_minio.py
 
 # MinIOの内容確認
-docker exec trino_lakehouse-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
+docker exec trino_lakehouse-minio-client-1 mc ls minio/warehouse/zero-shot/<dataset>/
+```
+
+**注意：`scaled_*`データセットの扱い**
+- `scaled_*`ディレクトリのParquetファイルは、MinIOでは`scaled_`プレフィックスを除いた名前で保存されます
+- 例：`python utils/upload_to_minio.py scaled_financial` → MinIOに`financial/`として保存
+
+### 4. Iceberg DDLの生成
+
+ParquetファイルからIceberg用のテーブル定義（DDL）を自動生成します：
+
+```bash
+# 特定のデータセットのDDLを生成
+python utils/generate_iceberg_ddl_from_parquet.py walmart --with-schema
+
+# 全データセットのDDLを一括生成
+python utils/generate_iceberg_ddl_from_parquet.py --with-schema
+```
+
+**生成されるファイル:**
+- `zero-shot_datasets/<dataset>/schema_sql/iceberg.sql`
+- Parquetファイルの実際の型に基づいてDDLを生成
+  - INT64 → BIGINT
+  - STRING → VARCHAR
+  - DOUBLE → DOUBLE
+- SQL予約語（`order`など）は自動的に引用符で囲む
+
+**`scaled_*`データセットの場合:**
+- DDLは`scaled_`を除いたディレクトリに保存
+- 例：`scaled_financial` → `zero-shot_datasets/financial/schema_sql/iceberg.sql`
+- テーブル名も`iceberg.financial.*`になる
+
+### 5. Trinoでテーブル作成とParquetファイルのリンク
+
+生成したDDLを使ってTrinoでテーブルを作成し、MinIOのParquetファイルをリンクします：
+
+```bash
+# 特定のデータセットを処理
+python utils/create_tables_and_link_parquet.py walmart
+
+# 全データセットを一括処理
+python utils/create_tables_and_link_parquet.py
+
+# Linuxでsudoが必要な場合
+python utils/create_tables_and_link_parquet.py walmart --sudo
+python utils/create_tables_and_link_parquet.py --sudo
+```
+
+**処理内容:**
+1. Icebergスキーマを自動作成（`iceberg.<dataset_name>`）
+2. DDLファイルからテーブルを作成
+3. MinIOのParquetファイルを`ALTER TABLE EXECUTE add_files`でリンク
+
+**`scaled_*`データセットの動作:**
+- `scaled_baseball`を指定 → `iceberg.baseball`スキーマに作成
+- MinIOは`zero-shot/baseball/`を参照
+- DDLは`zero-shot_datasets/baseball/schema_sql/iceberg.sql`を使用
+
+### 完全なワークフロー例
+
+```bash
+# 例1: Walmartデータセット
+python utils/csv_to_parquet.py walmart
+python utils/upload_to_minio.py walmart
+python utils/generate_iceberg_ddl_from_parquet.py walmart --with-schema
+python utils/create_tables_and_link_parquet.py walmart
+
+# 例2: Scaled Financialデータセット
+python utils/csv_to_parquet.py scaled_financial
+python utils/upload_to_minio.py scaled_financial
+python utils/generate_iceberg_ddl_from_parquet.py scaled_financial --with-schema
+python utils/create_tables_and_link_parquet.py scaled_financial
+
+# 例3: 全データセットを一括処理
+python utils/upload_to_minio.py
+python utils/generate_iceberg_ddl_from_parquet.py --with-schema
+python utils/create_tables_and_link_parquet.py
 ```
 
 ## Trinoでのテーブル操作
@@ -291,23 +374,97 @@ DROP TABLE IF EXISTS name;
 
 #### トラブルシューティング
 
-テーブルが破損している場合やメタデータに問題がある場合：
+**テーブルのDROPが失敗する場合：**
 
 ```bash
-# 1. MinIOから直接データを削除
-docker exec project-minio-client-1 mc rm --recursive --force minio/warehouse/zero-shot/imdb/name/
+# 1. MinIOからデータを削除
+docker exec trino_lakehouse-minio-client-1 mc rm --recursive --force minio/warehouse/zero-shot/<dataset>/<table>/
 
-# 2. Trinoを再起動してメタデータキャッシュをクリア
+# 2. Trinoを再起動
 docker-compose restart trino
 
-# 3. テーブルを再作成
-docker exec -it project-trino-1 trino
+# 待機（起動完了まで）
+sleep 20
+
+# 3. 再度DROP
+docker exec trino_lakehouse-trino-1 trino --execute 'DROP TABLE IF EXISTS iceberg.<dataset>.<table>;'
+```
+
+**スキーマごと削除する場合：**
+
+```bash
+# スキーマとすべてのテーブルを削除
+docker exec trino_lakehouse-trino-1 trino --execute 'DROP SCHEMA IF EXISTS iceberg.<dataset> CASCADE;'
+
+# MinIOのデータも削除
+docker exec trino_lakehouse-minio-client-1 mc rm --recursive --force minio/warehouse/zero-shot/<dataset>/
+```
+
+**Icebergカタログを完全にリセット：**
+
+```bash
+# 全サービスを停止
+docker-compose down
+
+# Icebergメタデータを削除
+docker volume rm project_postgres-data
+
+# 再起動（カタログを再作成）
+docker-compose up -d
+```
+
+## ユーティリティスクリプト詳細
+
+### スクリプト一覧と使い分け
+
+| スクリプト | 用途 | 引数 | オプション |
+|-----------|------|------|-----------|
+| `csv_to_parquet.py` | CSVをParquetに変換 | `<dataset>` または省略で全データセット | - |
+| `upload_to_minio.py` | ParquetをMinIOにアップロード | `<dataset>` または省略で全データセット | - |
+| `generate_iceberg_ddl_from_parquet.py` | ParquetスキーマからDDL生成 | `<dataset>` または省略で全データセット | `--with-schema` |
+| `create_tables_and_link_parquet.py` | Trinoでテーブル作成＆リンク | `<dataset>` または省略で全データセット | `--sudo` |
+| `create_schemas.py` | MinIOのデータセットからスキーマ作成 | - | `--sudo` |
+| `convert_sql_to_iceberg.py` | PostgreSQL DDLをIceberg形式に変換 | `<dataset>` または省略で全データセット | `--with-schema` |
+
+### データセット処理の推奨フロー
+
+**通常のデータセット（walmart, tpc_h, imdbなど）:**
+```bash
+python utils/csv_to_parquet.py walmart
+python utils/upload_to_minio.py walmart
+python utils/generate_iceberg_ddl_from_parquet.py walmart --with-schema
+python utils/create_tables_and_link_parquet.py walmart
+```
+
+**Scaled データセット（scaled_financial, scaled_baseballなど）:**
+```bash
+python utils/csv_to_parquet.py scaled_financial
+python utils/upload_to_minio.py scaled_financial
+python utils/generate_iceberg_ddl_from_parquet.py scaled_financial --with-schema
+python utils/create_tables_and_link_parquet.py scaled_financial
+```
+※MinIO、Trino両方で`financial`（`scaled_`なし）として扱われます
+
+**ボリューム管理コマンド：**
+
+```bash
+# ボリューム一覧確認
+docker volume ls
+
+# 特定ボリュームの詳細
+docker volume inspect project_postgres-data
+
+# Trinoキャッシュのクリア（安全）
+docker-compose down
+docker volume rm project_trino-data
+docker-compose up -d
 ```
 
 ## 注意事項
 
 - **データファイル**: TPC-HデータファイルはGitHubのサイズ制限により含まれていません。
-- **メモリ使用量**: デフォルトで4GBのRAMが使用されます
+- **メモリ使用量**: デフォルトで16GBのRAMが使用されます
 - **ポート競合**: 8080, 8181, 9000, 9001, 5432ポートが使用されます
+- **`scaled_*`データセット**: MinIOとTrinoでは`scaled_`プレフィックスなしで扱われます
 
 ## ライセンス
