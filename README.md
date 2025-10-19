@@ -36,11 +36,6 @@
 
 ## セットアップ手順
 
-### 前提条件
-
-- Docker と Docker Compose がインストールされていること
-- 最低 8GB の RAM が利用可能であること
-
 ### 1. リポジトリのクローン
 
 ```bash
@@ -151,22 +146,18 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
 #### MinIO warehouseディレクトリの管理
 
 ```bash
-# connection refused がでたら
-# 必要があれば（MinIO コンテナに正常に接続するためのコマンド）
-docker exec project-minio-client-1 mc alias set local
-
 # Zero-shotデータセット用ディレクトリの作成
-docker exec project-minio-client-1 mc mb local/warehouse/zero-shot
+docker exec trino_lakehouse-minio-client-1 mc mb minio/warehouse/zero-shot
 
 # 各データセット用ディレクトリの作成
-docker exec project-minio-client-1 sh -c '
+docker exec trino_lakehouse-minio-client-1 sh -c '
 for dataset in accidents airline baseball basketball carcinogenesis consumer credit employee fhnk financial geneea genome hepatitis imdb imdb_full movielens seznam ssb tournament tpc_h walmart; do
   mc mb local/warehouse/zero-shot/$dataset
 done
 '
 
 # ディレクトリ構造の確認
-docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/
+docker exec trino_lakehouse-minio-client-1 mc ls local/warehouse/zero-shot/
 ```
 
 ## CSV to Parquet変換とアップロード
@@ -203,7 +194,7 @@ python utils/csv_to_parquet.py walmart
 python utils/upload_to_minio.py
 
 # MinIOの内容確認
-docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
+docker exec trino_lakehouse-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
 ```
 
 ## Trinoでのテーブル操作
@@ -212,10 +203,10 @@ docker exec project-minio-client-1 mc ls local/warehouse/zero-shot/<dataset>/
 
 ```bash
 # Trinoコンテナに接続
-docker exec -it project-trino-1 trino
+docker exec -it trino_lakehouse-trino-1 trino
 
 # または、特定のカタログに直接接続
-docker exec -it project-trino-1 trino --catalog iceberg
+docker exec -it trino_lakehouse-trino-1 trino --catalog iceberg
 ```
 
 ### テーブルの作成とデータ連携
