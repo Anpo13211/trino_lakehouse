@@ -39,8 +39,8 @@
 ### 1. リポジトリのクローン
 
 ```bash
-git clone https://github.com/Anpo13211/trino_lakehouse.git
-cd trino_lakehouse
+git clone https://github.com/ToyotaInfoTech/query-cost-prediction.git
+cd query-cost-prediction
 ```
 
 ### 2. Zero-Shotデータセットのクローン
