@@ -24,10 +24,16 @@ SQL_RESERVED_KEYWORDS = {
 
 def quote_if_reserved(identifier: str) -> str:
     """
-    Quote identifier if it's a SQL reserved keyword
+    Quote identifier if it's a SQL reserved keyword or starts with a digit
     """
+    # Quote if reserved keyword
     if identifier.lower() in SQL_RESERVED_KEYWORDS:
         return f'"{identifier}"'
+    
+    # Quote if starts with a digit or contains special characters
+    if identifier and (identifier[0].isdigit() or not identifier.replace('_', '').isalnum()):
+        return f'"{identifier}"'
+    
     return identifier
 
 
@@ -148,13 +154,21 @@ def execute_sql_file_in_trino(sql_file_path: str, container_name: str = None, us
         else:
             print("✗")
             # Show the actual SQL statement that failed
-            print(f"    SQL: {stmt[:100]}...")
+            print(f"    SQL: {stmt[:150]}...")
             if error:
-                error_lines = [line for line in error.split('\n') if line.strip() and 'WARNING' not in line and 'org.jline' not in line]
-                if error_lines:
-                    print(f"    Error: {error_lines[-1][:300]}")
+                # Filter out noise and show meaningful error lines
+                error_lines = [line.strip() for line in error.split('\n') 
+                              if line.strip() 
+                              and 'WARNING' not in line 
+                              and 'org.jline' not in line
+                              and 'dumb terminal' not in line]
+                # Show last 3 lines of error for context
+                relevant_errors = error_lines[-3:] if len(error_lines) >= 3 else error_lines
+                for err_line in relevant_errors:
+                    if err_line:
+                        print(f"    Error: {err_line[:400]}")
             if output:
-                print(f"    Output: {output[:200]}")
+                print(f"    Output: {output[:300]}")
             # Continue with next statement even if one fails
     
     return True, None, None
@@ -201,15 +215,27 @@ EXECUTE add_files(
             print("✓")
             success_count += 1
         else:
-            print("✗")
-            if error:
-                # Show detailed error for debugging
-                error_lines = [line for line in error.split('\n') if line.strip() and 'WARNING' not in line]
-                if error_lines:
-                    print(f"    Error: {error_lines[-1][:200]}")
-            if output:
-                print(f"    Output: {output[:200]}")
-            failed_count += 1
+            # Check if error is "File already exists" (not a real error)
+            if error and 'File already exists' in error:
+                print("⊗ (already linked)")
+                success_count += 1  # Count as success
+            else:
+                print("✗")
+                if error:
+                    # Show detailed error for debugging
+                    error_lines = [line.strip() for line in error.split('\n') 
+                                  if line.strip() 
+                                  and 'WARNING' not in line
+                                  and 'org.jline' not in line
+                                  and 'dumb terminal' not in line]
+                    # Show last 3 lines for context
+                    relevant_errors = error_lines[-3:] if len(error_lines) >= 3 else error_lines
+                    for err_line in relevant_errors:
+                        if err_line:
+                            print(f"    Error: {err_line[:400]}")
+                if output:
+                    print(f"    Output: {output[:300]}")
+                failed_count += 1
         
         # Small delay to avoid overwhelming Trino
         time.sleep(0.5)
@@ -291,9 +317,12 @@ def process_dataset(dataset_name: str, minio_client: Minio, use_sudo: bool = Fal
 
 def find_all_datasets_with_ddl_and_parquet():
     """
-    Find all datasets that have both iceberg.sql and parquet files in MinIO
+    Find all datasets that have both iceberg.sql and parquet files
+    
+    Note: If both scaled_* and the original dataset exist, only process scaled_*
     """
     datasets = []
+    scaled_datasets = set()
     zero_shot_dir = "zero-shot_datasets"
     if not os.path.exists(zero_shot_dir):
         return datasets
@@ -301,11 +330,21 @@ def find_all_datasets_with_ddl_and_parquet():
     for item in os.listdir(zero_shot_dir):
         item_path = os.path.join(zero_shot_dir, item)
         if os.path.isdir(item_path):
-            ddl_file = os.path.join(item_path, "schema_sql", "iceberg.sql")
-            if os.path.exists(ddl_file):
+            parquet_dir = os.path.join(item_path, "parquet_data")
+            
+            # Only consider datasets that have parquet_data directory
+            if os.path.exists(parquet_dir):
                 datasets.append(item)
+                
+                # Track scaled datasets
+                if item.startswith("scaled_"):
+                    original_name = item.replace("scaled_", "", 1)
+                    scaled_datasets.add(original_name)
     
-    return sorted(datasets)
+    # Filter out original datasets if scaled version exists
+    filtered_datasets = [d for d in datasets if not (d in scaled_datasets)]
+    
+    return sorted(filtered_datasets)
 
 
 def main():

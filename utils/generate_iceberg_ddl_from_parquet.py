@@ -22,10 +22,16 @@ SQL_RESERVED_KEYWORDS = {
 
 def quote_if_reserved(identifier: str) -> str:
     """
-    Quote identifier if it's a SQL reserved keyword
+    Quote identifier if it's a SQL reserved keyword or starts with a digit
     """
+    # Quote if reserved keyword
     if identifier.lower() in SQL_RESERVED_KEYWORDS:
         return f'"{identifier}"'
+    
+    # Quote if starts with a digit or contains special characters
+    if identifier and (identifier[0].isdigit() or not identifier.replace('_', '').isalnum()):
+        return f'"{identifier}"'
+    
     return identifier
 
 
@@ -147,10 +153,24 @@ def generate_ddl_from_parquet(dataset_name: str, full_table_name: str = None):
             
             # Generate columns
             columns = []
+            seen_column_names = {}  # Track column names to handle duplicates
+            
             for i, field in enumerate(schema):
                 col_name = field.name
                 arrow_type = field.type
                 iceberg_type = convert_arrow_type_to_iceberg(arrow_type)
+                
+                # Handle duplicate column names by adding suffix
+                original_col_name = col_name
+                if col_name in seen_column_names:
+                    # Add suffix to make it unique
+                    suffix = 1
+                    while f"{col_name}_{suffix}" in seen_column_names:
+                        suffix += 1
+                    col_name = f"{col_name}_{suffix}"
+                    print(f"  [warn] Duplicate column '{original_col_name}' renamed to '{col_name}'")
+                
+                seen_column_names[col_name] = True
                 
                 # Quote column name if it's a reserved keyword
                 quoted_col_name = quote_if_reserved(col_name)

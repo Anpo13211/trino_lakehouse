@@ -32,10 +32,10 @@
 │   ├── parquet/               # Parquet形式データ
 │   └── dss.sql                # データベーススキーマ定義
 └── zero-shot_datasets/         # Zero-Shotデータセット
-    ├── accidents/              # 事故データセット
-    ├── airline/                # 航空データセット
-    ├── baseball/               # 野球データセット
-    └── ...                     # その他のデータセット
+    ├── accidents/              
+    ├── airline/                
+    ├── baseball/               
+    └── ...                     
 ```
 
 ## セットアップ手順

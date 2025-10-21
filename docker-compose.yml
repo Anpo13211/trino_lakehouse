@@ -24,7 +24,8 @@ services:
       QUARKUS_DATASOURCE_USERNAME: polaris
       QUARKUS_DATASOURCE_PASSWORD: polaris
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "http://localhost:8181/healthcheck"]
       interval: 5s
@@ -43,7 +44,8 @@ services:
       QUARKUS_DATASOURCE_USERNAME: polaris
       QUARKUS_DATASOURCE_PASSWORD: polaris
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     command: >
       bootstrap
       -r default-realm
@@ -116,6 +118,11 @@ services:
       - local-iceberg-lakehouse
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U polaris -d polaris"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   polaris-data:
