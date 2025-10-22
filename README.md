@@ -47,7 +47,20 @@ git clone https://github.com/Anpo13211/trino_lakehouse.git
 cd trino_lakehouse
 ```
 
-### 2. ネットワークとボリュームの作成
+### 2. Zero-Shotデータセットのクローン
+
+```bash
+# Git LFSのインストール（初回のみ）
+git lfs install
+
+# Hugging Faceからzero-shot_datasetsリポジトリをクローン
+git clone https://huggingface.co/datasets/Anpopo/zero-shot_datasets
+
+# クローンしたディレクトリがtrino_lakehouse内に配置されていることを確認
+ls zero-shot_datasets/
+```
+
+### 3. ネットワークとボリュームの作成
 
 ```bash
 # Dockerネットワークの作成
@@ -59,13 +72,13 @@ docker volume create project_minio-data
 docker volume create project_postgres-data
 ```
 
-### 3. 環境の起動
+### 4. 環境の起動
 
 ```bash
 docker-compose up -d
 ```
 
-### 4. サービスの起動確認
+### 5. サービスの起動確認
 
 ```bash
 # 全サービスの状態確認
@@ -75,7 +88,7 @@ docker-compose ps
 docker-compose logs -f
 ```
 
-### 5. アクセストークンの取得とカタログ作成
+### 6. アクセストークンの取得とカタログ作成
 
 ```bash
 # OAuth APIからアクセストークンを取得
