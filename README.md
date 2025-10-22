@@ -27,10 +27,6 @@
 │   ├── jvm.config             # JVM設定
 │   ├── log.properties         # ログ設定
 │   └── node.properties        # ノード設定
-├── tpch_data/                  # TPC-Hデータセット
-│   ├── csv/                    # CSV形式データ
-│   ├── parquet/               # Parquet形式データ
-│   └── dss.sql                # データベーススキーマ定義
 └── zero-shot_datasets/         # Zero-Shotデータセット
     ├── accidents/              
     ├── airline/                
