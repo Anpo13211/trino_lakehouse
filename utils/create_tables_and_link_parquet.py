@@ -87,7 +87,7 @@ def get_trino_container_name(use_sudo: bool = False):
     return "lakehouse-trino-1"
 
 
-def execute_sql_in_trino(sql_command: str, container_name: str = None, use_sudo: bool = False):
+def execute_sql_in_trino(sql_command: str, container_name: str = None, use_sudo: bool = False, schema: str = None):
     """
     Execute SQL command in Trino
     """
@@ -100,9 +100,14 @@ def execute_sql_in_trino(sql_command: str, container_name: str = None, use_sudo:
     
     command.extend([
         "docker", "exec", container_name, "trino",
-        "--catalog", "iceberg",
-        "--execute", sql_command
+        "--catalog", "iceberg"
     ])
+    
+    # Add schema if specified
+    if schema:
+        command.extend(["--schema", schema])
+    
+    command.extend(["--execute", sql_command])
     
     try:
         result = subprocess.run(
@@ -121,7 +126,7 @@ def execute_sql_in_trino(sql_command: str, container_name: str = None, use_sudo:
         return False, e.stdout, error_msg
 
 
-def execute_sql_file_in_trino(sql_file_path: str, container_name: str = None, use_sudo: bool = False):
+def execute_sql_file_in_trino(sql_file_path: str, container_name: str = None, use_sudo: bool = False, schema: str = None):
     """
     Execute SQL file in Trino
     """
@@ -147,7 +152,7 @@ def execute_sql_file_in_trino(sql_file_path: str, container_name: str = None, us
             continue
         
         print(f"  Executing statement {i+1}/{len(statements)}...", end=" ")
-        success, output, error = execute_sql_in_trino(stmt + ";", container_name, use_sudo)
+        success, output, error = execute_sql_in_trino(stmt + ";", container_name, use_sudo, schema)
         
         if success:
             print("✓")
@@ -174,7 +179,7 @@ def execute_sql_file_in_trino(sql_file_path: str, container_name: str = None, us
     return True, None, None
 
 
-def link_parquet_files(schema_dataset_name: str, original_dataset_name: str, tables: list, container_name: str = None, use_sudo: bool = False):
+def link_parquet_files(schema_dataset_name: str, original_dataset_name: str, tables: list, container_name: str = None, use_sudo: bool = False, schema: str = None):
     """
     Link Parquet files from MinIO to Iceberg tables using ALTER TABLE EXECUTE add_files
     
@@ -209,7 +214,7 @@ EXECUTE add_files(
 );"""
         
         print(f"  Linking {table_name}...", end=" ")
-        success, output, error = execute_sql_in_trino(alter_sql, container_name, use_sudo)
+        success, output, error = execute_sql_in_trino(alter_sql, container_name, use_sudo, schema)
         
         if success:
             print("✓")
@@ -280,7 +285,7 @@ def process_dataset(dataset_name: str, minio_client: Minio, use_sudo: bool = Fal
     schema_name = f"iceberg.{schema_dataset_name}"
     create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {schema_name};"
     print(f"\n=== Creating schema {schema_name} ===")
-    success, output, error = execute_sql_in_trino(create_schema_sql, use_sudo=use_sudo)
+    success, output, error = execute_sql_in_trino(create_schema_sql, use_sudo=use_sudo, schema="default")
     if success:
         print("✓ Schema ready")
     else:
@@ -294,7 +299,7 @@ def process_dataset(dataset_name: str, minio_client: Minio, use_sudo: bool = Fal
     
     # Execute DDL file to create tables
     print(f"\n=== Creating tables from {ddl_file} ===")
-    success, output, error = execute_sql_file_in_trino(ddl_file, use_sudo=use_sudo)
+    success, output, error = execute_sql_file_in_trino(ddl_file, use_sudo=use_sudo, schema=schema_dataset_name)
     
     if not success:
         print(f"✗ Failed to execute DDL file")
@@ -303,7 +308,7 @@ def process_dataset(dataset_name: str, minio_client: Minio, use_sudo: bool = Fal
     print("✓ Tables created successfully")
     
     # Link Parquet files (pass schema_dataset_name for Trino table names)
-    success_count, failed_count = link_parquet_files(schema_dataset_name, dataset_name, tables, use_sudo=use_sudo)
+    success_count, failed_count = link_parquet_files(schema_dataset_name, dataset_name, tables, use_sudo=use_sudo, schema=schema_dataset_name)
     
     print(f"\n{'='*60}")
     print(f"Summary for {dataset_name}:")

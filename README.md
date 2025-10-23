@@ -133,7 +133,7 @@ curl -i -X POST \
 - **MinIO API**: http://localhost:9000
 - **Polaris API**: http://localhost:8181
 
-## データの確認
+## データの確認（必要に応じて docker コンテナ名を変更）
 
 ```bash
 # MinIOにアップロードされたファイルの確認

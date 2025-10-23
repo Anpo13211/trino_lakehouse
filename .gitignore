@@ -34,3 +34,6 @@ logs/
 .env.local
 .env.*.local
 venv/
+
+# Analysis results
+explain_analyze_results/
