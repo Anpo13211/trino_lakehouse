@@ -175,7 +175,7 @@ class TrinoClient:
             return {
                 "success": False,
                 "stdout": "",
-                "stderr": "Query timeout (5 minutes)",
+                "stderr": "Query timeout (30 seconds)",
                 "returncode": -1
             }
         except Exception as e:

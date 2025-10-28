@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  trino-worker:
+    image: trinodb/trino:latest
+    container_name: trino-worker-11
+    hostname: trino-worker-11
+    network_mode: host
+    environment:
+      - TRINO_ENVIRONMENT=production
+    volumes:
+      - ./config:/etc/trino
+      - ./data:/var/trino/data
+    deploy:
+      resources:
+        limits:
+          memory: 50G
+        reservations:
+          memory: 50G
+    restart: unless-stopped

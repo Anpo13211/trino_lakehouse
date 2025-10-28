@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    network_mode: host
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: dummy-region
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      MINIO_DOMAIN: minio
+    volumes:
+      - minio_data:/data
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+
+  # MinIOクライアント - warehouseバケットを自動作成
+  minio-client:
+    image: minio/mc:latest
+    container_name: minio-client
+    network_mode: host
+    depends_on:
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: dummy-region
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set minio http://localhost:9000 admin password) do echo '...waiting...' && sleep 1; done;
+      mc mb minio/warehouse || true;
+      mc anonymous set public minio/warehouse;
+      echo 'MinIO setup completed!';
+      tail -f /dev/null
+      "
+    restart: unless-stopped
+
+volumes:
+  minio_data:
