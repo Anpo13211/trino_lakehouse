@@ -10,7 +10,7 @@ services:
       - TRINO_ENVIRONMENT=production
     volumes:
       - ./config:/etc/trino
-      - ./data:/var/trino/data
+      - trino-worker-12-data:/var/trino/data
     deploy:
       resources:
         limits:
@@ -18,3 +18,6 @@ services:
         reservations:
           memory: 50G
     restart: unless-stopped
+
+volumes:
+  trino-worker-12-data:

@@ -14,8 +14,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U polaris -d polaris"]
       interval: 5s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   # Bootstrap polaris - PostgreSQLにメタデータを保存させるためにスキーマを作成
@@ -57,10 +58,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8181/healthcheck"]
-      interval: 5s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8181/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
     restart: unless-stopped
 
 volumes:

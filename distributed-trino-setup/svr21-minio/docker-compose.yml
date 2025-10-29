@@ -15,6 +15,12 @@ services:
     volumes:
       - minio_data:/data
     command: ["server", "/data", "--console-address", ":9001"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 15s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   # MinIOクライアント - warehouseバケットを自動作成
@@ -23,7 +29,8 @@ services:
     container_name: minio-client
     network_mode: host
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     environment:
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: password
