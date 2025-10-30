@@ -45,8 +45,8 @@ services:
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: password
       AWS_REGION: dummy-region
-      AWS_ENDPOINT_URL_S3: http://192.168.8.150:9000
-      AWS_ENDPOINT_URL_STS: http://192.168.8.150:9000
+      AWS_ENDPOINT_URL_S3: http://<minio_ip>:9000
+      AWS_ENDPOINT_URL_STS: http://<minio_ip>:9000
       POLARIS_BOOTSTRAP_CREDENTIALS: default-realm,root,secret
       polaris.features.DROP_WITH_PURGE_ENABLED: "true"
       polaris.realm-context.realms: default-realm

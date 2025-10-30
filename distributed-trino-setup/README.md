@@ -4,18 +4,18 @@ This setup deploys a distributed Trino cluster across multiple physical servers 
 
 ## Server Configuration
 
-- **svr10** (192.168.8.80): Trino Coordinator
-- **svr11** (192.168.8.90): Trino Worker
-- **svr12** (192.168.8.100): Trino Worker
-- **svr20** (192.168.8.140): Polaris Catalog + PostgreSQL
-- **svr21** (192.168.8.150): MinIO
+- **coordinator-host** (<coordinator_ip>): Trino Coordinator
+- **worker-1** (<worker1_ip>): Trino Worker
+- **worker-2** (<worker2_ip>): Trino Worker
+- **catalog-host** (<polaris_ip>): Polaris Catalog + PostgreSQL
+- **object-store** (<minio_ip>): MinIO
 
 ## Credentials
 
 ### MinIO
 - Access Key: `admin`
 - Secret Key: `password`
-- Console URL: http://192.168.8.150:9001
+- Console URL: http://<minio_ip>:9001
 
 ### PostgreSQL
 - Database: `polaris`
@@ -36,7 +36,7 @@ This setup deploys a distributed Trino cluster across multiple physical servers 
 
 **重要**: このセットアップは `network_mode: host` を使用しています。これにより：
 - 各コンテナが物理サーバーのネットワークインターフェースを直接使用
-- サーバー間でIPアドレス（192.168.8.x）を使って直接通信が可能
+- サーバー間でIPアドレス（<ip_address>）を使って直接通信が可能
 - ファイアウォール設定で以下のポートを開放する必要があります：
   - **Trino**: 8080 (全ノード)
   - **Polaris**: 8181, 5432
@@ -69,73 +69,46 @@ sudo iptables -A INPUT -p tcp --dport 9001 -j ACCEPT
 
 ## Deployment
 
-### 方法1: 自動デプロイ（推奨）
-
-このリポジトリをすべてのサーバーに同期してから、deploy.shを実行します：
-
-```bash
-# スクリプトに実行権限を付与
-chmod +x deploy.sh health-check.sh stop.sh
-
-# デプロイを実行
-./deploy.sh
-
-# デプロイ後、ヘルスチェック実行
-./health-check.sh
-```
-
-**注意**: deploy.shは各サーバーにSSH接続を行います。事前にパスワードなしSSH認証（SSH鍵）を設定しておいてください。
-
-```bash
-# SSH鍵の設定例（まだの場合）
-ssh-keygen -t rsa -b 4096
-ssh-copy-id user@192.168.8.80
-ssh-copy-id user@192.168.8.90
-ssh-copy-id user@192.168.8.100
-ssh-copy-id user@192.168.8.140
-ssh-copy-id user@192.168.8.150
-```
-
-### 方法2: 手動デプロイ
+### 手動デプロイ
 
 1. Copy the appropriate docker-compose files to each server:
    ```bash
-   # svr10
-   scp -r svr10-coordinator/ user@192.168.8.80:~/
+   # coordinator-host
+   scp -r coordinator-host/ user@<coordinator_ip>:~/
 
-   # svr11
-   scp -r svr11-worker/ user@192.168.8.90:~/
+   # worker-1
+   scp -r worker-1/ user@<worker1_ip>:~/
 
-   # svr12
-   scp -r svr12-worker/ user@192.168.8.100:~/
+   # worker-2
+   scp -r worker-2/ user@<worker2_ip>:~/
 
-   # svr20
-   scp -r svr20-polaris/ user@192.168.8.140:~/
+   # catalog-host
+   scp -r catalog-host/ user@<polaris_ip>:~/
 
-   # svr21
-   scp -r svr21-minio/ user@192.168.8.150:~/
+   # object-store
+   scp -r object-store/ user@<minio_ip>:~/
    ```
 
 2. Verify network connectivity between servers:
    ```bash
-   # From svr10, test connectivity to other servers
-   ping 192.168.8.90
-   ping 192.168.8.100
-   ping 192.168.8.140
-   ping 192.168.8.150
+   # From coordinator-host, test connectivity to other servers
+   ping <ip_address>
+   ping <ip_address>
+   ping <ip_address>
+   ping <ip_address>
    ```
 
 3. Deploy in the following order:
-   - svr20: Polaris + PostgreSQL
-   - svr21: MinIO
-   - svr11, svr12: Trino Workers
-   - svr10: Trino Coordinator
+- catalog-host: Polaris + PostgreSQL
+- object-store: MinIO
+- worker-1, worker-2: Trino Workers
+- coordinator-host: Trino Coordinator
 
 ## Access
 
-- Trino Web UI: http://192.168.8.80:8080
-- MinIO Console: http://192.168.8.150:9001
-- Polaris Catalog: http://192.168.8.140:8181
+- Trino Web UI: http://<coordinator_ip>:8080
+- MinIO Console: http://<minio_ip>:9001
+- Polaris Catalog: http://<polaris_ip>:8181
 
 ## Health Check and Testing
 
@@ -149,7 +122,7 @@ docker logs <container-name>
 
 ### 2. Check Worker Registration
 
-Access Trino Web UI at http://192.168.8.80:8080 and:
+Access Trino Web UI at http://<coordinator_ip>:8080 and:
 - Click on "Cluster" tab
 - You should see 3 nodes total: 1 coordinator + 2 workers
 - All nodes should show status "active"
@@ -164,12 +137,12 @@ Then run:
 SELECT * FROM system.runtime.nodes;
 ```
 
-Expected output:
+Expected output (example):
 ```
 node_id         | http_uri                    | node_version | coordinator | state
-coordinator-01  | http://192.168.8.80:8080    | 458          | true        | active
-worker-11       | http://192.168.8.90:8080    | 458          | false       | active
-worker-12       | http://192.168.8.100:8080   | 458          | false       | active
+coordinator-01  | http://<coordinator_ip>:8080    | 458          | true        | active
+worker-11       | http://<worker_ip>:8080         | 458          | false       | active
+worker-12       | http://<worker_ip>:8080         | 458          | false       | active
 ```
 
 ### 3. Test Distributed Query Execution
@@ -190,9 +163,9 @@ Check the execution plan to confirm multiple workers are being used.
 
 1. Check network connectivity:
    ```bash
-   # From coordinator server (svr10)
-   telnet 192.168.8.90 8080
-   telnet 192.168.8.100 8080
+   # From coordinator server
+   telnet <worker_ip> 8080
+   telnet <worker_ip> 8080
    ```
 
 2. Check firewall settings - ensure port 8080 is open on all servers
@@ -209,8 +182,8 @@ Check the execution plan to confirm multiple workers are being used.
 
 1. Verify services are running:
    ```bash
-   curl http://192.168.8.140:8181/api/catalog/v1/config  # Polaris
-   curl http://192.168.8.150:9000/minio/health/live      # MinIO
+   curl http://<polaris_ip>:8181/api/catalog/v1/config  # Polaris
+   curl http://<minio_ip>:9000/minio/health/live        # MinIO
    ```
 
 2. Check firewall settings for ports 8181 (Polaris) and 9000/9001 (MinIO)
@@ -231,7 +204,7 @@ This setup supports:
 ### Key Changes from Single-Node Setup
 
 1. **Network Mode**: Changed from `bridge` to `host` to enable inter-server communication
-2. **discovery.uri**: Set to coordinator's physical IP (192.168.8.80:8080)
+2. **discovery.uri**: Set to coordinator's physical IP (<coordinator_ip>:8080)
 3. **node.internal-address**: Set to each server's physical IP
 4. **Unique node.id**: Each node has a unique identifier
 5. **Distributed Execution Settings**: Added the following for optimal distributed query performance:
@@ -280,20 +253,20 @@ This setup supports:
 
 ### 1. ネットワーク構成
 - **`network_mode: host`**: 各コンテナがホストのネットワークを直接使用
-  - これにより、192.168.8.x の物理IPアドレスで直接通信が可能
+  - これにより、<coordinator_ip>/<worker_ip>/<polaris_ip>/<minio_ip> の物理IPアドレスで直接通信が可能
   - コンテナ間のネットワークブリッジやポートマッピングが不要
 
 ### 2. Discovery メカニズム
-- **Coordinator** (svr10)が`discovery-server.enabled=true`でディスカバリーサーバーとして機能
-- **Workers** (svr11, svr12)は`discovery.uri=http://192.168.8.80:8080`でコーディネーターに登録
+- **Coordinator** がディスカバリーサーバーとして機能
+- **Workers** は`discovery.uri=http://<coordinator_ip>:8080`でコーディネーターに登録
 - 各ワーカーは起動時に自動的にコーディネーターに接続し、クラスターに参加
 
 ### 3. ノード識別
 - **node.id**: 各ノードに一意のID（coordinator-01, worker-11, worker-12）
 - **node.internal-address**: 各ノードの物理IPアドレスを明示的に設定
-  - Coordinator: 192.168.8.80
-  - Worker-11: 192.168.8.90
-  - Worker-12: 192.168.8.100
+  - Coordinator: <coordinator_ip>
+  - Worker-11: <worker_ip>
+  - Worker-12: <worker_ip>
 
 ### 4. データ交換の最適化
 - **exchange.max-buffer-size=32MB**: ワーカー間のデータ転送バッファ
@@ -301,19 +274,19 @@ This setup supports:
 - **distributed-joins-enabled=true**: 分散ハッシュジョインを有効化
 
 ### 5. 共有ストレージとカタログ
-- **MinIO** (svr21): すべてのノードから同じS3エンドポイント（192.168.8.150:9000）にアクセス
-- **Polaris** (svr20): すべてのノードが同じカタログエンドポイント（192.168.8.140:8181）を参照
+- **MinIO**: すべてのノードから同じS3エンドポイント（<minio_ip>:9000）にアクセス
+- **Polaris**: すべてのノードが同じカタログエンドポイント（<polaris_ip>:8181）を参照
 - これにより、すべてのノードが同じIcebergテーブルメタデータとデータにアクセス可能
 
 ## クラスターの動作フロー
 
 ```
-1. ユーザー → Coordinator (192.168.8.80:8080) にクエリ送信
+1. ユーザー → Coordinator (<coordinator_ip>:8080) にクエリ送信
 2. Coordinator がクエリを解析し、実行計画を作成
 3. Coordinator が Worker-11 と Worker-12 にタスクを分散
 4. 各 Worker が並列でデータを処理
-   - MinIO (192.168.8.150) からデータを読み込み
-   - Polaris (192.168.8.140) からメタデータを取得
+   - MinIO (<minio_ip>) からデータを読み込み
+   - Polaris (<polaris_ip>) からメタデータを取得
 5. Worker 間でデータ交換（必要な場合）
 6. 各 Worker が結果を Coordinator に返送
 7. Coordinator が最終結果を集約してユーザーに返す
@@ -328,12 +301,12 @@ This setup supports:
 **解決方法**:
 1. ワーカーノードのログを確認:
    ```bash
-   ssh svr11 "docker logs trino-worker-11"
-   ssh svr12 "docker logs trino-worker-12"
+   ssh worker-1-host "docker logs trino-worker-11"
+   ssh worker-2-host "docker logs trino-worker-12"
    ```
 2. コーディネーターへの接続確認:
    ```bash
-   ssh svr11 "curl http://192.168.8.80:8080/v1/info"
+   ssh worker-1-host "curl http://<coordinator_ip>:8080/v1/info"
    ```
 3. ファイアウォール設定を確認（ポート8080が開放されているか）
 
