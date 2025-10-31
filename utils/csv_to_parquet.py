@@ -4,6 +4,7 @@ import os
 import sys
 from io import StringIO
 from pathlib import Path
+import argparse
 
 import pyarrow as pa
 import pyarrow.csv as pacsv
@@ -293,13 +294,32 @@ def process_dataset(dataset_name: str):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python csv_to_parquet.py <dataset_name>")
-        print("Example: python csv_to_parquet.py walmart")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Convert CSVs in zero-shot_datasets to Parquet")
+    parser.add_argument(
+        "datasets",
+        nargs="*",
+        help="Dataset names to process. If omitted, process all datasets under zero-shot_datasets/"
+    )
+    args = parser.parse_args()
 
-    dataset_name = sys.argv[1]
-    process_dataset(dataset_name)
+    datasets = args.datasets
+    if not datasets:
+        # Discover all subdirectories under zero-shot_datasets
+        root = Path("zero-shot_datasets")
+        if not root.exists():
+            print("Error: zero-shot_datasets directory not found")
+            sys.exit(1)
+        datasets = sorted([p.name for p in root.iterdir() if p.is_dir()])
+        if not datasets:
+            print("No datasets found under zero-shot_datasets/")
+            sys.exit(0)
+        print(f"Discovered {len(datasets)} datasets: {', '.join(datasets)}")
+
+    for ds in datasets:
+        try:
+            process_dataset(ds)
+        except Exception as e:
+            print(f"[error] Failed processing {ds}: {e}")
 
 
 if __name__ == "__main__":

@@ -444,7 +444,13 @@ def main():
                        help="Directory containing workload files")
     parser.add_argument("--output-dir", default="./explain_analyze_results",
                        help="Directory to save results")
+    # Backward-compatible: --dataset (single) and new --datasets (multiple)
     parser.add_argument("--dataset", help="Specific dataset to analyze (optional)")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        help="Multiple datasets to analyze, e.g. --datasets airline baseball basketball"
+    )
     parser.add_argument("--max-queries", type=int, default=10000, help="Maximum number of queries per workload file (default: 10000)")
     parser.add_argument("--trino-host", default="localhost", help="Trino host")
     parser.add_argument("--trino-port", default="8080", help="Trino port")
@@ -504,8 +510,21 @@ def main():
     print(f"Max queries per file: {args.max_queries or 'unlimited'}")
     
     try:
-        if args.dataset:
-            # 特定のデータセットのみ分析
+        # 優先順位: --datasets > --dataset > 全データセット
+        if args.datasets and len(args.datasets) > 0:
+            selected = args.datasets
+            print(f"Datasets specified via --datasets: {', '.join(selected)}")
+            with tqdm(total=len(selected), desc="Processing datasets", unit="dataset") as dataset_pbar:
+                for dataset in selected:
+                    try:
+                        analyzer.analyze_dataset(dataset, args.max_queries)
+                        dataset_pbar.set_postfix({"current": dataset})
+                    except Exception as e:
+                        print(f"Error analyzing dataset {dataset}: {e}")
+                        dataset_pbar.set_postfix({"current": dataset, "status": "✗"})
+                    dataset_pbar.update(1)
+        elif args.dataset:
+            # 特定のデータセットのみ分析（後方互換）
             analyzer.analyze_dataset(args.dataset, args.max_queries)
         else:
             # すべてのデータセットを分析

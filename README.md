@@ -16,7 +16,8 @@
 │   ├── generate_iceberg_ddl_from_parquet.py   # ParquetからIceberg DDL生成
 │   ├── create_tables_and_link_parquet.py      # Trinoテーブル作成とParquetリンク
 │   ├── create_schemas.py                      # Trinoスキーマ一括作成
-│   └── convert_sql_to_iceberg.py              # PostgreSQL DDLをIceberg形式に変換
+│   ├── convert_sql_to_iceberg.py              # PostgreSQL DDLをIceberg形式に変換
+│   └── run_explain_analyze.py                 # ワークロードに対して EXPLAIN ANALYZE を実行
 ├── trino/                      # Trino設定ファイル
 │   ├── catalog/
 │   │   ├── iceberg.properties  # Icebergカタログ設定
@@ -192,6 +193,9 @@ python utils/csv_to_parquet.py <dataset_name>
 
 # 例: Walmartデータセットを変換
 python utils/csv_to_parquet.py walmart
+
+# 全データセットを一括変換
+python utils/csv_to_parquet.py
 ```
 
 **変換されるファイル:**
@@ -287,6 +291,38 @@ python utils/generate_iceberg_ddl_from_parquet.py --with-schema
 python utils/create_tables_and_link_parquet.py
 ```
 
+## EXPLAIN ANALYZE の収集（run_explain_analyze.py）
+
+Trino 上でワークロードの各クエリに対して `EXPLAIN ANALYZE` を実行し、結果を保存します。
+
+### 使い方
+
+単一データセット（後方互換の `--dataset`）:
+```bash
+python utils/run_explain_analyze.py --dataset airline --max-queries 5
+```
+
+複数データセット（新規の `--datasets`）:
+```bash
+python utils/run_explain_analyze.py --datasets airline baseball basketball --max-queries 5
+```
+
+主なオプション:
+- `--workloads-dir`: ワークロードSQLのディレクトリ（既定: `./zero-shot_datasets/workloads`）
+- `--output-dir`: 結果保存先（既定: `./explain_analyze_results`）
+- `--max-queries`: 各ワークロードで収集する最大件数（既定: 10000）
+- `--trino-host`, `--trino-port`, `--trino-user`, `--trino-catalog`, `--trino-schema`
+- `--sudo`: Docker コマンドに sudo を付与（Linux 等で必要な場合）
+
+優先順位:
+- `--datasets` が指定されていればそれが優先、無ければ `--dataset`、両方無ければ全データセットを走査します。
+
+スモークテスト例（軽量実行）:
+```bash
+python utils/run_explain_analyze.py --datasets airline baseball --max-queries 1
+
+```
+
 ## Trinoでのテーブル操作
 
 ### Trinoへの接続
@@ -343,42 +379,6 @@ EXECUTE add_files(
 -- PARTITIONED が設定されたファイルではこの方法でやることができません（他の解決策を模索中）。
 ```
 
-#### 1. テーブル一覧の確認
-
-```sql
--- カタログ内の全スキーマを表示
-SHOW SCHEMAS IN iceberg;
-
--- スキーマ内の全テーブルを表示
-USE iceberg.imdb;
-SHOW TABLES;
-```
-
-#### 2. テーブル構造、統計情報の確認
-
-```sql
--- テーブルのカラム情報を表示
-DESCRIBE name;
-
--- より詳細な情報を表示
-SHOW COLUMNS FROM name;
-
--- テーブルの作成DDLを表示
-SHOW CREATE TABLE name;
-
--- テーブルの統計情報を表示
-SHOW STATS FOR name;
-```
-
-### テーブルの削除とトラブルシューティング
-
-#### テーブルの削除
-
-```sql
--- テーブルを削除（データも削除）
-DROP TABLE IF EXISTS name;
-```
-
 #### トラブルシューティング
 
 **テーブルのDROPが失敗する場合：**
@@ -415,6 +415,8 @@ docker-compose down
 
 # Icebergメタデータを削除
 docker volume rm project_postgres-data
+docker volume rm project_polaris-data
+docker volume rm project_minio-data
 
 # 再起動（カタログを再作成）
 docker-compose up -d
@@ -432,6 +434,7 @@ docker-compose up -d
 | `create_tables_and_link_parquet.py` | Trinoでテーブル作成＆リンク | `<dataset>` または省略で全データセット | `--sudo` |
 | `create_schemas.py` | MinIOのデータセットからスキーマ作成 | - | `--sudo` |
 | `convert_sql_to_iceberg.py` | PostgreSQL DDLをIceberg形式に変換 | `<dataset>` または省略で全データセット | `--with-schema` |
+| `run_explain_analyze.py` | ワークロードSQLに対して EXPLAIN ANALYZE を実行し結果保存 | `--dataset <name>` または `--datasets <n...>` | `--max-queries`, `--workloads-dir`, `--output-dir`, `--sudo` |
 
 ### データセット処理の推奨フロー
 

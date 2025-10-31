@@ -5,6 +5,7 @@ services:
     image: trinodb/trino:latest
     container_name: trino-coordinator
     hostname: trino-coordinator
+    user: "2001:2001"
     network_mode: host
     environment:
       - TRINO_ENVIRONMENT=production
